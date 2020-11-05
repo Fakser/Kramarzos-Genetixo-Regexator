@@ -3,12 +3,21 @@ import numpy as np
 from copy import deepcopy
 import warnings
 from nltk import edit_distance
+from iteration_utilities import unique_everseen
+import json
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-MAX_REGEX_SIZE = 100
+MAX_REGEX_SIZE = 50
 possible_regex_parts = ['.', '+', '?', '*', '|', '\w', '\W', 's', '\S', '\d', '\D', '^', '$', '\A', '\z'] #+ [str(chr(i)) for i in range(32,123)] 
-possible_chars = [str(chr(i)) for i in range(32,123)] 
+#possible_chars = [str(chr(i)) for i in range(32,123)] 
+
+def load_json(path):
+    with open(path, 'r') as json_file:
+        json_dict = json.load(json_file)
+    X = [x['inputData'] for x in json_dict]
+    y = [[x['inputData'][interval['start']:interval['end']] for interval in x['selectedSubStrings']] for x in json_dict]
+    return X,y
 
 
 class KramarzosGenetixoRegexator(object):
@@ -36,9 +45,9 @@ class KramarzosGenetixoRegexator(object):
                 start = np.random.randint(0, 10)
                 end = np.random.randint(start, 20)
                 regex.append({'start': str(start), 'end': str(end)})
-            elif chance < 4*set_chance:
-                new_part = np.random.choice(possible_chars)
-                regex.append(str(new_part))                
+            # elif chance < 4*set_chance:
+            #     new_part = np.random.choice(possible_chars)
+            #     regex.append(str(new_part))                
             else:
                 new_part = np.random.choice(possible_regex_parts)
                 regex.append(str(new_part))
@@ -70,7 +79,6 @@ class KramarzosGenetixoRegexator(object):
             matches_copied = deepcopy(matches)
             for target in y[index]:
                 n += 1
-                
                 if len(matches_copied) >= 1:
                     ratios = [[match, 1/(1 + edit_distance(target, match))] for match in matches_copied]
                     ratios_sorted = [i for i in sorted(ratios, key = lambda x: x[1])]
@@ -78,13 +86,14 @@ class KramarzosGenetixoRegexator(object):
                     string_fitness += ratios_sorted[-1][1]
 
             if len(y[index]) > len(matches):
-                fitness += string_fitness * len(matches)/len(y)
+                fitness += string_fitness * len(matches)/len(y[index])
             else:
-                fitness += string_fitness * len(y)/len(matches)
-        #if n > 0:
-        return fitness/(n+1), all_matches
-        # else:
-            # return 0, all_matches
+                fitness += string_fitness * len(y[index])/len(matches)
+
+        if n == 1:
+            return fitness/(n), all_matches
+        else:
+            return fitness/(n+1), all_matches
 
     def generate_initial_population(self, population_size, set_chance):
         population = []
@@ -94,7 +103,7 @@ class KramarzosGenetixoRegexator(object):
             population.append({'regex': new_regex, 'fitness': new_regex_fitness, 'matches': matches})
         return population
     
-    def generate_kid_regex(self, parents, max_mutation_chance = 0.05):
+    def generate_kid_regex(self, parents, max_mutation_chance = 0.1):
 
         # crossover
         parent_chance = abs(np.random.normal())
@@ -138,10 +147,6 @@ class KramarzosGenetixoRegexator(object):
                 if mutation_type < 0.05:
                     # delete part
                     to_be_deleted.append(regex_part_index)
-                    # if regex_part_index == len(kid_regex) - 1:
-                    #     kid_regex = kid_regex[:-1]
-                    # else:
-                    #     kid_regex = kid_regex[:regex_part_index] + kid_regex[regex_part_index + 1:]
 
                 elif mutation_type < 0.5:
                     # replace part
@@ -154,26 +159,30 @@ class KramarzosGenetixoRegexator(object):
                             end = np.random.randint(start, 20)
                             kid_regex[regex_part_index] = {'start': str(start), 'end': str(end)}
                         
-                        elif abs(np.random.normal()) < 0.4:
-                            kid_regex[regex_part_index] = str(np.random.choice(possible_chars))
+                        # elif abs(np.random.normal()) < 0.4:
+                        #     kid_regex[regex_part_index] = str(np.random.choice(possible_chars))
                         else:
                             kid_regex[regex_part_index] = str(np.random.choice(possible_regex_parts))
 
-                elif mutation_type < 0.7:
+                elif mutation_type < 1:
                     # add new part
 
                     chance = abs(np.random.normal())            
                     if chance < 1*max_mutation_chance:
                         # add [...] to the regex
-                        new_part = self.generate_kid_regex(parents, max_mutation_chance*max_mutation_chance)
+                        if abs(np.random.normal()) < 0.5:
+                            new_part = self.generate_kid_regex(parents, max_mutation_chance*max_mutation_chance)
+                        else:
+                            new_part = self.generate_random_regex(set_chance = self.set_chance, max_length = MAX_REGEX_SIZE)
                     elif chance < 2*max_mutation_chance:
                         # add {start, end} to the regex
                         start = np.random.randint(0, 10)
                         end = np.random.randint(start, 20)
                         new_part = {'start': str(start), 'end': str(end)}
-                    elif chance < 4*max_mutation_chance:
-                        new_part = np.random.choice(possible_chars)
-                        new_part = str(new_part)                
+                    # elif chance < 4*max_mutation_chance:
+                    #     new_part = np.random.choice(possi
+                    # ble_chars)
+                    #     new_part = str(new_part)                
                     else:
                         new_part = np.random.choice(possible_regex_parts)
                         new_part = str(new_part)
@@ -190,24 +199,11 @@ class KramarzosGenetixoRegexator(object):
                 kid_regex = kid_regex[:regex_part_index - i] + kid_regex[regex_part_index - i + 1:]
         return kid_regex
 
-    def delete_repeated_parents(self, parents):
-        clean_parents = []
-        for current_index, current_parent in enumerate(parents):
-            is_in = False
-            for index, parent in enumerate(parents):
-                if index != current_inndex and self.regex_to_string(parent['regex']) == self.regex_to_string(current_parent['regex']):
-                    is_in == True
-                    break
-            if is_in == False:
-                clean_parents.append(deepcopy(current_parent))
-            
-        return parents
-
-
     def fit(self, n_iterations = 50, wanted_regex_quality = 0.9):
         for iteration in range(n_iterations):
             parents = [regex for regex in self.population if regex['fitness'] > 0]
             parents = [regex for regex in sorted(parents, key = lambda x: x['fitness'])]
+            parents = list(unique_everseen(parents))
             # parents = parents[-10:]
             if len(parents) < 1:
                 print('not enough parents in population')
@@ -219,14 +215,14 @@ class KramarzosGenetixoRegexator(object):
                 return parents[-1]
             
             else:
-                print('iteration {}, current best regex: {} of fitness {}'.format(iteration, self.regex_to_string(parents[-1]['regex']), parents[-1]['fitness']))
+                print('iteration {}, current best regex: {} of fitness {} matching {}'.format(iteration, self.regex_to_string(parents[-1]['regex']), parents[-1]['fitness'], parents[-1]['matches']))
             new_population = []   
-            for new_kid_index in range(self.population_size - len(parents[-10:])):
+            for new_kid_index in range(self.population_size - len(parents[-int(self.population_size*0.1):])):
                 kid_regex = self.generate_kid_regex(parents)
                 kid_regex_fitness, kid_regex_matches = self.calculate_regex_fitness(kid_regex, self.X, self.y)
                 new_population.append({'regex': kid_regex, 'fitness': kid_regex_fitness, 'matches': kid_regex_matches})
             
-            self.population = new_population + parents[-10:]
+            self.population = new_population + parents[-int(self.population_size*0.1):]
 
         parents = [regex for regex in self.population if regex['fitness'] > 0]
         parents = [regex for regex in sorted(parents, key = lambda x: x['fitness'])]   
@@ -234,7 +230,12 @@ class KramarzosGenetixoRegexator(object):
         return parents[-1]
 
 
-regexator = KramarzosGenetixoRegexator(['status: ON', 'status: ON, status: OFF'], [['ON'], ['ON', 'OFF']], population_size=5000)
+
+
+
+X, y = load_json('regos/regos1.json')
+print( y)
+regexator = KramarzosGenetixoRegexator(X, y, population_size=10000)
 regex = regexator.fit()
 print([regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']])
 # print(len([[regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']] for regex in regexator.population if regex['fitness'] > 0]))
