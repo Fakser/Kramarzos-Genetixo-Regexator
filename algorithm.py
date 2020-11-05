@@ -1,13 +1,12 @@
 import re
 import numpy as np
-from difflib import SequenceMatcher
 from copy import deepcopy
 import warnings
 from nltk import edit_distance
 
 warnings.simplefilter(action='ignore', category=FutureWarning)
 
-MAX_REGEX_SIZE = 500
+MAX_REGEX_SIZE = 100
 possible_regex_parts = ['.', '+', '?', '*', '|', '\w', '\W', 's', '\S', '\d', '\D', '^', '$', '\A', '\z'] #+ [str(chr(i)) for i in range(32,123)] 
 possible_chars = [str(chr(i)) for i in range(32,123)] 
 
@@ -18,6 +17,8 @@ class KramarzosGenetixoRegexator(object):
         self.X = deepcopy(X)
         self.y = deepcopy(y)
         self.population = self.generate_initial_population(population_size=population_size, set_chance=set_chance)
+        self.population_size = population_size
+        self.set_chance = set_chance
 
     def generate_random_regex(self, set_chance, max_length = MAX_REGEX_SIZE):
         if int(max_length) < 2:
@@ -80,10 +81,10 @@ class KramarzosGenetixoRegexator(object):
                 fitness += string_fitness * len(matches)/len(y)
             else:
                 fitness += string_fitness * len(y)/len(matches)
-        if n > 0:
-            return fitness/n, all_matches
-        else:
-            return 0, all_matches
+        #if n > 0:
+        return fitness/(n+1), all_matches
+        # else:
+            # return 0, all_matches
 
     def generate_initial_population(self, population_size, set_chance):
         population = []
@@ -92,6 +93,148 @@ class KramarzosGenetixoRegexator(object):
             new_regex_fitness, matches = self.calculate_regex_fitness(new_regex, self.X, self.y)
             population.append({'regex': new_regex, 'fitness': new_regex_fitness, 'matches': matches})
         return population
+    
+    def generate_kid_regex(self, parents, max_mutation_chance = 0.05):
+
+        # crossover
+        parent_chance = abs(np.random.normal())
+        tournament_population = [regex for regex in sorted(np.random.choice(self.population, size = 10), key = lambda x: x['fitness'])]
+        tournament_parents = [regex for regex in sorted(np.random.choice(parents, size = 10), key = lambda x: x['fitness'])]
+        if parent_chance < 0.2:
+            parent1 = tournament_population[-1]
+            parent2 = tournament_population[-2]
+
+        if parent_chance < 0.4 or len(parents) < 2:
+            parent1 = tournament_parents[-1]
+            parent2 = tournament_population[-1]
         
-regexator = KramarzosGenetixoRegexator(['yes i am', 'yes mam dude'], [['yes'], ['yes']], population_size=5000)
-print([[regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']] for regex in regexator.population if regex['fitness'] > 0])
+        if parent_chance < 0.6:
+            parent1 = tournament_population[-1]
+            parent2 = tournament_parents[-1]
+        
+        else:
+            parent1 = tournament_parents[-1]
+            parent2 = tournament_parents[-2]
+        
+        if len(parent1['regex']) > 2:
+            split_parent_1 = np.random.randint(1, len(parent1['regex']) - 1)
+        else:
+            split_parent_1 = len(parent1['regex']) - 1
+
+        if len(parent2['regex']) > 2:
+            split_parent_2 = np.random.randint(1, len(parent2['regex']) - 1)
+        else:
+            split_parent_2 = len(parent2['regex']) - 1
+
+        kid_regex = deepcopy(parent1['regex'][:split_parent_1]) + deepcopy(parent2['regex'][split_parent_2:])
+
+        # mutations
+        to_be_deleted = []
+        for regex_part_index in range(len(kid_regex)):
+            regex_part_mutation_chance = abs(np.random.normal())        
+            if regex_part_mutation_chance < max_mutation_chance:
+                mutation_type = abs(np.random.normal())
+
+                if mutation_type < 0.05:
+                    # delete part
+                    to_be_deleted.append(regex_part_index)
+                    # if regex_part_index == len(kid_regex) - 1:
+                    #     kid_regex = kid_regex[:-1]
+                    # else:
+                    #     kid_regex = kid_regex[:regex_part_index] + kid_regex[regex_part_index + 1:]
+
+                elif mutation_type < 0.5:
+                    # replace part
+
+                    if type(kid_regex[regex_part_index]) == list and abs(np.random.normal()) < 0.5:
+                        kid_regex[regex_part_index] = self.generate_kid_regex(parents, max_mutation_chance*max_mutation_chance)
+                    else:
+                        if abs(np.random.normal()) < 0.1:
+                            start = np.random.randint(0, 10)
+                            end = np.random.randint(start, 20)
+                            kid_regex[regex_part_index] = {'start': str(start), 'end': str(end)}
+                        
+                        elif abs(np.random.normal()) < 0.4:
+                            kid_regex[regex_part_index] = str(np.random.choice(possible_chars))
+                        else:
+                            kid_regex[regex_part_index] = str(np.random.choice(possible_regex_parts))
+
+                elif mutation_type < 0.7:
+                    # add new part
+
+                    chance = abs(np.random.normal())            
+                    if chance < 1*max_mutation_chance:
+                        # add [...] to the regex
+                        new_part = self.generate_kid_regex(parents, max_mutation_chance*max_mutation_chance)
+                    elif chance < 2*max_mutation_chance:
+                        # add {start, end} to the regex
+                        start = np.random.randint(0, 10)
+                        end = np.random.randint(start, 20)
+                        new_part = {'start': str(start), 'end': str(end)}
+                    elif chance < 4*max_mutation_chance:
+                        new_part = np.random.choice(possible_chars)
+                        new_part = str(new_part)                
+                    else:
+                        new_part = np.random.choice(possible_regex_parts)
+                        new_part = str(new_part)
+                    
+                    if regex_part_index == len(kid_regex) - 1:
+                        kid_regex.append(new_part)
+                    else:
+                        kid_regex = kid_regex[:regex_part_index] + [new_part] + kid_regex[regex_part_index:]
+
+        for i, regex_part_index in enumerate(to_be_deleted):
+            if regex_part_index - i == len(kid_regex) - 1:
+                kid_regex = kid_regex[:-1]
+            else:
+                kid_regex = kid_regex[:regex_part_index - i] + kid_regex[regex_part_index - i + 1:]
+        return kid_regex
+
+    def delete_repeated_parents(self, parents):
+        clean_parents = []
+        for current_index, current_parent in enumerate(parents):
+            is_in = False
+            for index, parent in enumerate(parents):
+                if index != current_inndex and self.regex_to_string(parent['regex']) == self.regex_to_string(current_parent['regex']):
+                    is_in == True
+                    break
+            if is_in == False:
+                clean_parents.append(deepcopy(current_parent))
+            
+        return parents
+
+
+    def fit(self, n_iterations = 50, wanted_regex_quality = 0.9):
+        for iteration in range(n_iterations):
+            parents = [regex for regex in self.population if regex['fitness'] > 0]
+            parents = [regex for regex in sorted(parents, key = lambda x: x['fitness'])]
+            # parents = parents[-10:]
+            if len(parents) < 1:
+                print('not enough parents in population')
+                population = self.generate_initial_population()
+                continue
+            
+            elif parents[-1]['fitness'] >= wanted_regex_quality:
+                print('algorithm finished in iteration {} finding regex {} with max fitness of {} matching {}'.format(iteration, self.regex_to_string(parents[-1]['regex']) , parents[-1]['fitness'], parents[-1]['matches']))
+                return parents[-1]
+            
+            else:
+                print('iteration {}, current best regex: {} of fitness {}'.format(iteration, self.regex_to_string(parents[-1]['regex']), parents[-1]['fitness']))
+            new_population = []   
+            for new_kid_index in range(self.population_size - len(parents[-10:])):
+                kid_regex = self.generate_kid_regex(parents)
+                kid_regex_fitness, kid_regex_matches = self.calculate_regex_fitness(kid_regex, self.X, self.y)
+                new_population.append({'regex': kid_regex, 'fitness': kid_regex_fitness, 'matches': kid_regex_matches})
+            
+            self.population = new_population + parents[-10:]
+
+        parents = [regex for regex in self.population if regex['fitness'] > 0]
+        parents = [regex for regex in sorted(parents, key = lambda x: x['fitness'])]   
+        print('algorithm finished in iteration {} finding regex {} with max fitness of {} matching {}'.format(n_iterations, self.regex_to_string(parents[-1]['regex']) , parents[-1]['fitness'], parents[-1]['matches']))
+        return parents[-1]
+
+
+regexator = KramarzosGenetixoRegexator(['status: ON', 'status: ON, status: OFF'], [['ON'], ['ON', 'OFF']], population_size=5000)
+regex = regexator.fit()
+print([regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']])
+# print(len([[regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']] for regex in regexator.population if regex['fitness'] > 0]))
