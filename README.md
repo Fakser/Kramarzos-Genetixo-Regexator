@@ -4,7 +4,9 @@ Bored of writing regular expressions?
 Boss wanted autnomus system that reads data from client emails and you have no idea what to do?
 Or maybe you just like to waste your time.
 
-We got you buddy.
+We got you buddy.<br>
+
+![meme0](./to_readme/meme0.png)<br>
 
 ## Geneticaly Generated Regular Expressions
 
@@ -24,7 +26,7 @@ Etc.<br>
 ![meme2](./to_readme/meme2.png)<br>
 It maximizes survival - in our case survival is equivalent of how good our regular expression is.
 It can be pretty random and slow - but generates best possible solutions.
-These solution can have some random stupid parts that does not make any sense. But that's how nature works.
+These solution can have some random stupid parts that does not make any sense. But that's how nature works.<br>
 ![meme3](./to_readme/meme3.png)<br>
 
 ## USE CASES
