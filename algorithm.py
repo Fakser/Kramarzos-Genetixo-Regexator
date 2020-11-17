@@ -327,9 +327,9 @@ class KramarzosGenetixoRegexator(object):
 
 
 
-X, y = load_json('regos/show_inventory_vid.json')
+X, y = load_json('regos/interface.json')
 print(y)
-regexator = KramarzosGenetixoRegexator(X, y, population_size=2000, only_true_matches = False)
+regexator = KramarzosGenetixoRegexator(X, y, population_size=2000, only_true_matches = True)
 regex = regexator.fit()
 print([regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']])
 # print(len([[regex['fitness'], regexator.regex_to_string(regex['regex']), regex['matches']] for regex in regexator.population if regex['fitness'] > 0]))

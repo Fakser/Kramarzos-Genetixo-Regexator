@@ -32,10 +32,15 @@ These solution can have some random stupid parts that does not make any sense. B
 My module can be used in 2 cases. <br>
 
 1. Generate perfect regular expression that matches only good stuff.<br>
-![meme4](./to_readme/meme4.png)<br>
+
 2. Generate imperfect regular expression that matches good stuff and some shit.<br>
-![meme5](./to_readme/meme5.png)<br>
 
 
+### Example
+
+We want to generate regular expression matching one column in ascii table.<br>
+So we input the data and wait 5 minutes. Result is as follows: <br>
+
+![meme5](./to_readme/przyklad.png)<br>
 
 
